@@ -58,6 +58,10 @@
 #define ENABLE_INCREMENTAL_ASSIGN 1
 #endif
 
+#if RD_KAFKA_VERSION >= 0x01040000
+#define ENABLE_TXNS 1
+#endif
+
 
 struct conf conf = {
         .run = 1,
@@ -618,6 +622,34 @@ static void producer_run (FILE *fp, char **paths, int pathcnt) {
                              strerror(errno));
             }
         }
+#if ENABLE_TXNS
+        if (conf.txn) {
+                rd_kafka_error_t *error;
+                const char *what;
+
+                if (conf.term_sig) {
+                        KC_INFO(0,
+                                "Aborting transaction due to "
+                                "termination signal\n");
+                        what = "abort_transaction()";
+                        error = rd_kafka_abort_transaction(
+                                conf.rk, conf.metadata_timeout * 1000);
+                } else {
+                        KC_INFO(1, "Committing transaction\n");
+                        what = "commit_transaction()";
+                        error = rd_kafka_commit_transaction(
+                                conf.rk, conf.metadata_timeout * 1000);
+                        if (!error)
+                                KC_INFO(1,
+                                        "Transaction successfully committed\n");
+                }
+
+                if (error)
+                        KC_FATAL("%s: %s", what, rd_kafka_error_string(error));
+        }
+#endif
+
+
 #if ENABLE_TXNS
         if (conf.txn) {
                 rd_kafka_error_t *error;
