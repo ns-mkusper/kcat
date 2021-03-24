@@ -18,6 +18,17 @@ function make_topic_name {
     echo "kafkacat_test_$$_${RANDOM}_${TEST_NAME}"
 }
 
+function create_topic {
+    local topic=$1
+    local partitions=$2
+    info "Creating topic $topic with $partitions partition(s)"
+    $KAFKA_PATH/bin/kafka-topics.sh \
+        --bootstrap-server $BROKERS \
+        --create \
+        --topic "$topic" \
+        --partitions $partitions \
+        --replication-factor 1
+}
 
 function info {
     local str=$1
@@ -33,4 +44,11 @@ function FAIL {
 function PASS {
     local str=$1
     echo -e "${CLR_BGGREEN}${TEST_NAME} | TEST PASSED: $str${CLR}"
+}
+
+
+function SKIP {
+    local str=$1
+    echo -e "${CLR_YELLOW}${TEST_NAME} | TEST SKIPPED: $str${CLR}"
+    exit 0
 }

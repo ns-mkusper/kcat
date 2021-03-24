@@ -249,7 +249,7 @@ void json_free (void*);
 /*
  * avro.c
  */
-char *kc_avro_to_json (const void *data, size_t data_len,
+char *kc_avro_to_json (const void *data, size_t data_len, int *schema_idp,
                        char *errstr, size_t errstr_size);
 
 void kc_avro_init (const char *key_schema_name,
