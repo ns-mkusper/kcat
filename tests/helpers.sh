@@ -1,21 +1,22 @@
 set -e
 
-CLR_BGRED="\033[97;41m"
-CLR_BGGREEN="\033[97;42m"
+CLR_BGRED="\033[37;41m"
+CLR_BGGREEN="\033[37;42m"
+CLR_YELLOW="\033[33m"
 CLR_INFO="\033[34m"
 CLR="\033[0m"
 
 if [[ -z "$BROKERS" ]]; then
-    echo -e "${CLR_BGRED}kafkacat tests requires \$BROKERS to be set${CLR}"
+    echo -e "${CLR_BGRED}kcat tests requires \$BROKERS to be set${CLR}"
     exit 1
 fi
 
-KAFKACAT="../kafkacat -b $BROKERS"
+KCAT="../kcat -b $BROKERS"
 TEST_NAME=$(basename $0 | sed -e 's/\.sh$//')
 
 function make_topic_name {
     local name=$1
-    echo "kafkacat_test_$$_${RANDOM}_${TEST_NAME}"
+    echo "kcat_test_$$_${RANDOM}_${TEST_NAME}name"
 }
 
 function create_topic {
@@ -29,6 +30,7 @@ function create_topic {
         --partitions $partitions \
         --replication-factor 1
 }
+
 
 function info {
     local str=$1
