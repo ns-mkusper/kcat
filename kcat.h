@@ -59,6 +59,10 @@
 #define HAVE_CONTROLLERID 0
 #endif
 
+#if RD_KAFKA_VERSION >= 0x01030000
+#define ENABLE_MOCK 1
+#endif
+
 
 typedef enum {
         KC_FMT_STR,
@@ -156,6 +160,12 @@ struct conf {
 #if ENABLE_AVRO
         serdes_conf_t *srconf;
         char   *schema_registry_url;
+#endif
+
+#if ENABLE_MOCK
+        struct {
+                int broker_cnt;
+        } mock;
 #endif
 };
 

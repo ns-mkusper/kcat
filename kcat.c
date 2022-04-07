@@ -50,6 +50,10 @@
 #include "kcat.h"
 #include "input.h"
 
+#if ENABLE_MOCK
+#include <librdkafka/rdkafka_mock.h>
+#endif
+
 #if RD_KAFKA_VERSION >= 0x01040000
 #define ENABLE_TXNS 1
 #endif
@@ -1265,6 +1269,45 @@ static void consumer_run (FILE *fp) {
 }
 
 
+#if ENABLE_MOCK
+/**
+ * @brief Run mock cluster until stdin is closed.
+ */
+static void mock_run (void) {
+        rd_kafka_t *rk;
+        rd_kafka_mock_cluster_t *mcluster;
+        const char *bootstraps;
+        char errstr[512];
+        char buf[64];
+
+        if (!(rk = rd_kafka_new(RD_KAFKA_PRODUCER, conf.rk_conf,
+                                errstr, sizeof(errstr))))
+                KC_FATAL("Failed to create client instance for "
+                         "mock cluster: %s", errstr);
+
+        mcluster = rd_kafka_mock_cluster_new(rk, conf.mock.broker_cnt);
+        if (!mcluster)
+                KC_FATAL("Failed to create mock cluster");
+
+        bootstraps = rd_kafka_mock_cluster_bootstraps(mcluster);
+
+        KC_INFO(1, "Mock cluster started with bootstrap.servers=%s\n",
+                bootstraps);
+        KC_INFO(1, "Press Ctrl-C+Enter or Ctrl-D to terminate.\n");
+
+        printf("BROKERS=%s\n", bootstraps);
+
+        while (conf.run && fgets(buf, sizeof(buf), stdin)) {
+                /* nop */
+        }
+
+        KC_INFO(1, "Terminating mock cluster\n");
+
+        rd_kafka_mock_cluster_destroy(mcluster);
+        rd_kafka_destroy(rk);
+}
+#endif
+
 /**
  * Print metadata information
  */
@@ -1435,6 +1478,9 @@ static void RD_NORETURN usage (const char *argv0, int exitcode,
 #if ENABLE_INCREMENTAL_ASSIGN
                 "IncrementalAssign, "
 #endif
+#if ENABLE_MOCK
+                "MockCluster, "
+#endif
                 ,
 #if ENABLE_JSON
                 json_can_emit_verbatim() ? "JSONVerbatim, " : "",
@@ -1448,12 +1494,19 @@ static void RD_NORETURN usage (const char *argv0, int exitcode,
                 exit(exitcode);
 
         fprintf(out, "\n"
-                "General options:\n"
-                "  -C | -P | -L | -Q  Mode: Consume, Produce, Metadata List, Query mode\n"
+                "Mode:\n"
+                "  -P                 Producer\n"
+                "  -C                 Consumer\n"
 #if ENABLE_KAFKACONSUMER
-                "  -G <group-id>      Mode: High-level KafkaConsumer (Kafka >=0.9 balanced consumer groups)\n"
-                "                     Expects a list of topics to subscribe to\n"
+                "  -G <group-id>      High-level KafkaConsumer (Kafka >=0.9 balanced consumer groups)\n"
 #endif
+                "  -L                 Metadata List\n"
+                "  -Q                 Query mode\n"
+#if ENABLE_MOCK
+                "  -M <broker-cnt>    Start Mock cluster\n"
+#endif
+                "\n"
+                "General options for most modes:\n"
                 "  -t <topic>         Topic to consume from, produce to, "
                 "or list\n"
                 "  -p <partition>     Partition\n"
@@ -1591,6 +1644,20 @@ static void RD_NORETURN usage (const char *argv0, int exitcode,
                 "                     Requires broker >= 0.10.0.0 and librdkafka >= 0.9.3.\n"
                 "                     Multiple -t .. are allowed but a partition\n"
                 "                     must only occur once.\n"
+                "\n"
+#if ENABLE_MOCK
+                "Mock cluster options (-M):\n"
+                "  The mock cluster is provided by librdkafka and supports a\n"
+                "  reasonable set of Kafka protocol functionality:\n"
+                "  producing, consuming, consumer groups, transactions, etc.\n"
+                "  When kcat is started with -M .. it will print the mock cluster\n"
+                "  bootstrap.servers to stdout, like so:\n"
+                "    BROKERS=broker1:port,broker2:port,..\n"
+                "  Use this list of brokers as bootstrap.servers in your Kafka application.\n"
+                "  When kcat exits (Ctrl-C, Ctrl-D or when stdin is closed) the\n"
+                "  cluster will be terminated.\n"
+                "\n"
+#endif
                 "\n"
                 "Format string tokens:\n"
                 "  %%s                 Message payload\n"
@@ -2194,16 +2261,36 @@ static void argparse (int argc, char **argv,
                 case 'C':
                 case 'L':
                 case 'Q':
+                        if (conf.mode && conf.mode != opt)
+                                KC_FATAL("Do not mix modes: -%c seen when "
+                                         "-%c already set",
+                                         (char)opt, conf.mode);
                         conf.mode = opt;
                         break;
 #if ENABLE_KAFKACONSUMER
                 case 'G':
+                        if (conf.mode && conf.mode != opt)
+                                KC_FATAL("Do not mix modes: -%c seen when "
+                                         "-%c already set",
+                                         (char)opt, conf.mode);
                         conf.mode = opt;
                         conf.group = optarg;
                         if (rd_kafka_conf_set(conf.rk_conf, "group.id", optarg,
                                               errstr, sizeof(errstr)) !=
                             RD_KAFKA_CONF_OK)
                                 KC_FATAL("%s", errstr);
+                        break;
+#endif
+#if ENABLE_MOCK
+                case 'M':
+                        if (conf.mode && conf.mode != opt)
+                                KC_FATAL("Do not mix modes: -%c seen when "
+                                         "-%c already set",
+                                         (char)opt, conf.mode);
+                        conf.mode = opt;
+                        conf.mock.broker_cnt = atoi(optarg);
+                        if (conf.mock.broker_cnt <= 0)
+                                KC_FATAL("-M <broker_cnt> expected");
                         break;
 #endif
                 case 't':
@@ -2450,7 +2537,7 @@ static void argparse (int argc, char **argv,
                 exit(0);
         }
 
-        if (!(conf.flags & CONF_F_BROKERS_SEEN))
+        if (!(conf.flags & CONF_F_BROKERS_SEEN) && conf.mode != 'M')
                 usage(argv[0], 1, "-b <broker,..> missing", 0);
 
         /* Decide mode if not specified */
@@ -2464,7 +2551,7 @@ static void argparse (int argc, char **argv,
         }
 
 
-        if (!strchr("GLQ", conf.mode) && !conf.topic)
+        if (!strchr("GLQM", conf.mode) && !conf.topic)
                 usage(argv[0], 1, "-t <topic> missing", 0);
         else if (conf.mode == 'Q' && !*rktparlistp)
                 usage(argv[0], 1,
@@ -2695,6 +2782,12 @@ int main (int argc, char **argv) {
 
                 rd_kafka_topic_partition_list_destroy(rktparlist);
                 break;
+
+#if ENABLE_MOCK
+        case 'M':
+                mock_run();
+                break;
+#endif
 
         default:
                 usage(argv[0], 0, NULL, 0);
