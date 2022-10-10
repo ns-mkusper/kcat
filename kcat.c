@@ -147,6 +147,9 @@ static void dr_msg_cb (rd_kafka_t *rk, const rd_kafka_message_t *rkmessage,
                        void *opaque) {
         int32_t broker_id = -1;
         struct buf *b = rkmessage->_private;
+#if RD_KAFKA_VERSION < 0x01000000
+        static int say_once = 1;
+#endif
 
         if (b) {
         		if (conf.flags & CONF_F_FMT_JSON) {
@@ -180,7 +183,6 @@ static void dr_msg_cb (rd_kafka_t *rk, const rd_kafka_message_t *rkmessage,
 
 #if RD_KAFKA_VERSION < 0x01000000
         if (rkmessage->offset == 0 && say_once) {
-                static int say_once = 1;
                 KC_INFO(3, "Enable message offset reporting "
                         "with '-X topic.produce.offset.report=true'\n");
                 say_once = 0;
