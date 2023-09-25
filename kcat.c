@@ -542,6 +542,7 @@ static void producer_run (FILE *fp, char **paths, int pathcnt) {
                 if (stats.tx == (uint64_t)conf.msg_cnt)
                     conf.run = 0;
             }
+            }
 
             if (conf.run) {
                 if (!feof(fp))
@@ -549,7 +550,8 @@ static void producer_run (FILE *fp, char **paths, int pathcnt) {
                              strerror(errno));
             }
 #endif
-            } else {
+            }
+            else {
             struct inbuf inbuf;
             struct buf *b;
 
