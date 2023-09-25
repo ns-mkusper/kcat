@@ -18,22 +18,21 @@ lrk_static="--enable-static"
 
 for opt in $*; do
     case $opt in
-        --no-install-deps)
-            lrk_install_deps=""
-            ;;
+    --no-install-deps)
+        lrk_install_deps=""
+        ;;
 
-        --no-enable-static)
-            lrk_static=""
-            ;;
+    --no-enable-static)
+        lrk_static=""
+        ;;
 
-        *)
-            echo "Unknown option: $opt"
-            exit 1
-            ;;
+    *)
+        echo "Unknown option: $opt"
+        exit 1
+        ;;
     esac
     shift
 done
-
 
 function download {
     local url=$1
@@ -45,7 +44,7 @@ function download {
     fi
 
     echo "Downloading $url to $dir"
-    if which wget 2>&1 > /dev/null; then
+    if which wget 2>&1 >/dev/null; then
         local dl='wget -q -O-'
     else
         local dl='curl -s -L'
@@ -56,16 +55,15 @@ function download {
     # Newer Mac tar's will try to restore metadata/attrs from
     # certain tar files (avroc in this case), which fails for whatever reason.
     if [[ $(uname -s) == "Darwin" ]] &&
-           tar --no-mac-metadata -h >/dev/null 2>&1; then
+        tar --no-mac-metadata -h >/dev/null 2>&1; then
         tar_args="--no-mac-metadata"
     fi
 
     mkdir -p "$dir"
-    pushd "$dir" > /dev/null
+    pushd "$dir" >/dev/null
     ($dl "$url" | tar -xz $tar_args -f - --strip-components 1) || exit 1
-    popd > /dev/null
+    popd >/dev/null
 }
-
 
 function github_download {
     local repo=$1
@@ -81,15 +79,14 @@ function build {
     dir=$1
     cmds=$2
 
-
     echo "Building $dir with commands:"
     echo "$cmds"
-    pushd $dir > /dev/null
+    pushd $dir >/dev/null
     set +o errexit
     eval $cmds
     ret=$?
     set -o errexit
-    popd > /dev/null
+    popd >/dev/null
 
     if [[ $ret == 0 ]]; then
         echo "Build of $dir SUCCEEDED!"
@@ -120,11 +117,11 @@ function pkg_cfg_lib {
     libs=$(echo $libs | sed -e "s/-l${pkg}//g")
     echo " $libs"
 
-    >&2 echo "Using $libs for $pkg"
+    echo >&2 "Using $libs for $pkg"
 }
 
 mkdir -p tmp-bootstrap
-pushd tmp-bootstrap > /dev/null
+pushd tmp-bootstrap >/dev/null
 
 export DEST="$PWD/usr"
 export CFLAGS="-I$DEST/include"
@@ -136,21 +133,36 @@ fi
 export PKG_CONFIG_PATH="$DEST/lib/pkgconfig"
 
 github_download "edenhill/librdkafka" "$LIBRDKAFKA_VERSION" "librdkafka"
-build librdkafka "([ -f config.h ] || ./configure --prefix=$DEST $lrk_install_deps $lrk_static --disable-lz4-ext) && make -j && make install" || (echo "Failed to build librdkafka: bootstrap failed" ; false)
+build librdkafka "([ -f config.h ] || ./configure --prefix=$DEST $lrk_install_deps $lrk_static --disable-lz4-ext) && make -j && make install" || (
+    echo "Failed to build librdkafka: bootstrap failed"
+    false
+)
 
 github_download "edenhill/yajl" "edenhill" "libyajl"
-build libyajl "([ -d build ] || ./configure --prefix $DEST) && make install" || (echo "Failed to build libyajl: JSON support will probably be disabled" ; true)
+build libyajl "([ -d build ] || ./configure --prefix $DEST) && make install" || (
+    echo "Failed to build libyajl: JSON support will probably be disabled"
+    true
+)
 
 download http://www.digip.org/jansson/releases/jansson-2.12.tar.gz libjansson
-build libjansson "([[ -f config.status ]] || ./configure --enable-static --prefix=$DEST) && make && make install" || (echo "Failed to build libjansson: AVRO support will probably be disabled" ; true)
+build libjansson "([[ -f config.status ]] || ./configure --enable-static --prefix=$DEST) && make && make install" || (
+    echo "Failed to build libjansson: AVRO support will probably be disabled"
+    true
+)
 
 github_download "apache/avro" "release-1.8.2" "avroc"
-build avroc "cd lang/c && mkdir -p build && cd build && cmake -DCMAKE_C_FLAGS=\"$CFLAGS\" -DCMAKE_INSTALL_PREFIX=$DEST .. && make install" || (echo "Failed to build Avro C: AVRO support will probably be disabled" ; true)
+build avroc "cd lang/c && mkdir -p build && cd build && cmake -DCMAKE_C_FLAGS=\"$CFLAGS\" -DCMAKE_INSTALL_PREFIX=$DEST .. && make install" || (
+    echo "Failed to build Avro C: AVRO support will probably be disabled"
+    true
+)
 
 github_download "confluentinc/libserdes" "master" "libserdes"
-build libserdes "([ -f config.h ] || ./configure  --prefix=$DEST --CFLAGS=-I${DEST}/include --LDFLAGS=-L${DEST}/lib) && make && make install" || (echo "Failed to build libserdes: AVRO support will probably be disabled" ; true)
+build libserdes "([ -f config.h ] || ./configure  --prefix=$DEST --CFLAGS=-I${DEST}/include --LDFLAGS=-L${DEST}/lib) && make && make install" || (
+    echo "Failed to build libserdes: AVRO support will probably be disabled"
+    true
+)
 
-popd > /dev/null
+popd >/dev/null
 
 echo "Building kcat"
 ./configure --clean
