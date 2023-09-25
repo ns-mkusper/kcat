@@ -65,13 +65,6 @@
 #define ENABLE_INCREMENTAL_ASSIGN 1
 #endif
 
-typedef struct
-{
-		struct buf * buf;
-		void* hand;
-} json_buffer_t;
-
-
 
 struct conf conf = {
         .run = 1,
@@ -458,11 +451,6 @@ static void producer_run (FILE *fp, char **paths, int pathcnt) {
 
             inbuf_init(&inbuf, conf.msg_size, "\n", 1);
 
-
-                        if (!key && conf.fixed_key) {
-                                key = conf.fixed_key;
-                                key_len = conf.fixed_key_len;
-                        }
 
             /* Read messages from input, delimited by conf.delim */
             while (conf.run &&
