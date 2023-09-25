@@ -201,7 +201,7 @@ static void dr_msg_cb (rd_kafka_t *rk, const rd_kafka_message_t *rkmessage,
  */
 static void produce (void *buf, size_t len,
                      const void *key, size_t key_len, int msgflags,
-                     void *msg_opaque, rd_kafka_headers_t* headers) {
+                     void *msg_opaque) {
         rd_kafka_headers_t *hdrs = NULL;
 
         /* Headers are freed on successful producev(), pass a copy. */
@@ -519,7 +519,7 @@ static void producer_run (FILE *fp, char **paths, int pathcnt) {
                         KC_FATAL("Unable to read message: %s",
                                  strerror(errno));
         }
-        else if (conf.flags & CONF_F_FMT_JSON) {
+        if (conf.flags & CONF_F_FMT_JSON) {
 #ifndef ENABLE_JSON
             KC_FATAL("This build lacks json support. It is a bug to run here");
 #else
@@ -612,103 +612,100 @@ static void producer_run (FILE *fp, char **paths, int pathcnt) {
                              strerror(errno));
             }
 #endif
-        }
-        else {
-            struct inbuf inbuf;
-            struct buf *b;
+        } else {
+          struct inbuf inbuf;
+          struct buf *b;
 
-            inbuf_init(&inbuf, conf.msg_size, conf.delim, conf.delim_size);
+          inbuf_init(&inbuf, conf.msg_size, conf.delim, conf.delim_size);
 
-            /* Read messages from input, delimited by conf.delim */
-            while (conf.run &&
-                   inbuf_read_to_delimeter(&inbuf, fp, &b)) {
-                int msgflags = 0;
-                char *buf = b->buf;
-                char *key = NULL;
-                size_t key_len = 0;
-                size_t len = b->size;
+          /* Read messages from input, delimited by conf.delim */
+          while (conf.run && inbuf_read_to_delimeter(&inbuf, fp, &b)) {
+            int msgflags = 0;
+            char *buf = b->buf;
+            char *key = NULL;
+            size_t key_len = 0;
+            size_t len = b->size;
 
-                if (len == 0) {
-                    buf_destroy(b);
-                    continue;
-                }
-
-                /* Extract key, if desired and found. */
-                if (conf.flags & CONF_F_KEY_DELIM) {
-                    char *t;
-                    if ((t = rd_strnstr(buf, len,
-                                        conf.key_delim,
-                                        conf.key_delim_size))) {
-                        key_len = (size_t)(t-buf);
-                        key     = buf;
-                        buf     = t + conf.key_delim_size;
-                        len    -= key_len + conf.key_delim_size;
-
-                        if (conf.flags & CONF_F_NULL) {
-                            if (len == 0)
-                                buf = NULL;
-                            if (key_len == 0)
-                                key = NULL;
-                        }
-                    }
-                }
-
-                if (!key && conf.fixed_key) {
-                    key = conf.fixed_key;
-                    key_len = conf.fixed_key_len;
-                }
-
-                if (conf.flags & CONF_F_FMT_KEY_BASE64) {
-                    unsigned char *new_key = base64_dec_malloc((char *)key, key_len, &key_len);
-                    if (!new_key) {
-                        KC_ERROR("Decoding base64 failed");
-                    }
-                    // FIXME copy and ref & memory leakage
-                    key = (char *)new_key;
-                }
-
-                if (conf.flags & CONF_F_FMT_VALUE_BASE64) {
-                    unsigned char *new_buf = base64_dec_malloc((char *)buf, len, &len);
-                    if (!new_buf) {
-                        KC_ERROR("Decoding base64 failed");
-                    }
-                    // FIXME copy and ref & memory leakage
-                    buf = (char *)new_buf;
-                }
-
-                if (len < 1024) {
-                    /* If message is smaller than this arbitrary
-                     * threshold it will be more effective to
-                     * copy the data in librdkafka. */
-                    msgflags |= RD_KAFKA_MSG_F_COPY;
-                }
-
-                /* Produce message */
-                produce(buf, len, key, key_len, msgflags,
-                        (msgflags & RD_KAFKA_MSG_F_COPY) ?
-                        NULL : b, NULL);
-
-                if (conf.flags & CONF_F_TEE &&
-                    fwrite(b->buf, b->size, 1, stdout) != 1)
-                    KC_FATAL("Tee write error for message "
-                             "of %zd bytes: %s",
-                             b->size, strerror(errno));
-
-                if (msgflags & RD_KAFKA_MSG_F_COPY) {
-                    /* librdkafka made a copy of the input. */
-                    buf_destroy(b);
-                }
-
-                /* Enforce -c <cnt> */
-                if (stats.tx == (uint64_t)conf.msg_cnt)
-                    conf.run = 0;
+            if (len == 0) {
+              buf_destroy(b);
+              continue;
             }
 
-            if (conf.run) {
-                if (!feof(fp))
-                    KC_FATAL("Unable to read message: %s",
-                             strerror(errno));
+            /* Extract key, if desired and found. */
+            if (conf.flags & CONF_F_KEY_DELIM) {
+              char *t;
+              if ((t = rd_strnstr(buf, len, conf.key_delim,
+                                  conf.key_delim_size))) {
+                key_len = (size_t)(t - buf);
+                key = buf;
+                buf = t + conf.key_delim_size;
+                len -= key_len + conf.key_delim_size;
+
+                if (conf.flags & CONF_F_NULL) {
+                  if (len == 0)
+                    buf = NULL;
+                  if (key_len == 0)
+                    key = NULL;
+                }
+              }
             }
+
+            if (!key && conf.fixed_key) {
+              key = conf.fixed_key;
+              key_len = conf.fixed_key_len;
+            }
+
+            if (conf.flags & CONF_F_FMT_KEY_BASE64) {
+              unsigned char *new_key =
+                  base64_dec_malloc((char *)key, key_len, &key_len);
+              if (!new_key) {
+                KC_ERROR("Decoding base64 failed");
+              }
+              // FIXME copy and ref & memory leakage
+              key = (char *)new_key;
+            }
+
+            if (conf.flags & CONF_F_FMT_VALUE_BASE64) {
+              unsigned char *new_buf =
+                  base64_dec_malloc((char *)buf, len, &len);
+              if (!new_buf) {
+                KC_ERROR("Decoding base64 failed");
+              }
+              // FIXME copy and ref & memory leakage
+              buf = (char *)new_buf;
+            }
+
+            if (len < 1024) {
+              /* If message is smaller than this arbitrary
+               * threshold it will be more effective to
+               * copy the data in librdkafka. */
+              msgflags |= RD_KAFKA_MSG_F_COPY;
+            }
+
+            /* Produce message */
+            produce(buf, len, key, key_len, msgflags,
+                    (msgflags & RD_KAFKA_MSG_F_COPY) ? NULL : b, NULL);
+
+            if (conf.flags & CONF_F_TEE &&
+                fwrite(b->buf, b->size, 1, stdout) != 1)
+              KC_FATAL("Tee write error for message "
+                       "of %zd bytes: %s",
+                       b->size, strerror(errno));
+
+            if (msgflags & RD_KAFKA_MSG_F_COPY) {
+              /* librdkafka made a copy of the input. */
+              buf_destroy(b);
+            }
+
+            /* Enforce -c <cnt> */
+            if (stats.tx == (uint64_t)conf.msg_cnt)
+              conf.run = 0;
+          }
+
+          if (conf.run) {
+            if (!feof(fp))
+              KC_FATAL("Unable to read message: %s", strerror(errno));
+          }
         }
 #if ENABLE_TXNS
         if (conf.txn) {
