@@ -549,8 +549,7 @@ static void producer_run (FILE *fp, char **paths, int pathcnt) {
                              strerror(errno));
             }
 #endif
-            }
-        else {
+            } else {
             struct inbuf inbuf;
             struct buf *b;
 
