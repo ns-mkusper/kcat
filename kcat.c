@@ -50,7 +50,6 @@
 
 
 #include "kcat.h"
-#include "json.c"
 #include "input.h"
 
 #if ENABLE_MOCK
