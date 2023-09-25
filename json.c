@@ -26,7 +26,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "kafkacat.h"
+#include "kcat.h"
 #include "base64.h"
 
 #include <yajl/yajl_gen.h>
